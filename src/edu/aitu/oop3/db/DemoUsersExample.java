@@ -16,7 +16,7 @@ public class DemoUsersExample {
             System.out.println("Database error:");
             e.printStackTrace();
         }
-    }
+    } // dsfsf
     private static void createTableIfNeeded(Connection connection) throws SQLException {
         String sql = """
 create table if not exists instructors (
