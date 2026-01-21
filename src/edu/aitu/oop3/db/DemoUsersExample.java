@@ -85,7 +85,7 @@ email varchar(100) unique not null
             System.out.println("Inserted courses: " + rows);
         }
     }
-    // enrollment insert
+    // enrollment inser
     private static void insertenrollments(
             Connection connection,
             int student_id,
