@@ -16,7 +16,7 @@ public class DemoUsersExample {
             insertUser(connection,"Dana", "Nurpeisova", "dana.nurpeisova@uni.kz", "SE-2302");
             insertUser(connection,"Timur", "Bekov", "timur.bekov@uni.kz", "CS-2415");
             printAllUsers(connection);
-
+//1
         } catch (SQLException e) {
             System.out.println("Database error:");
             e.printStackTrace();
