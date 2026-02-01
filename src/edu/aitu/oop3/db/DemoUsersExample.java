@@ -13,7 +13,7 @@ public class DemoUsersExample {
             insertUser(connection,"Askar", "Tulegenov", "askar.tulegenov@uni.kz");
             insertUser(connection, "Madina", "Kairatova", "madina.kairatova@uni.kz");
 
-            // courses dat
+            // courses data
             insertCourse(connection, "CS101", "Introduction to Programming", 5);
             insertCourse(connection, "CS102", "Object-Oriented Programming", 5);
             insertCourse(connection, "CS201", "Data Structures", 4);
