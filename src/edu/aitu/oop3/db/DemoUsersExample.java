@@ -146,7 +146,6 @@ public class DemoUsersExample {
                     String courseType = scanner.nextLine().toUpperCase();
                     Course course = CourseFactory.createCourse(courseType);
 
-
                     // ======= Lambda for filtering =======
                     List<Student> students = List.of(student);
                     students.stream()
