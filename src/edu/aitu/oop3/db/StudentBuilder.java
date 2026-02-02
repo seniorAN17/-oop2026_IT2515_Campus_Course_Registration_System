@@ -10,7 +10,6 @@ public class StudentBuilder {
         this.firstName = firstName;
         return this;
     }
-
     public StudentBuilder setLastName(String lastName) {
         this.lastName = lastName;
         return this;
