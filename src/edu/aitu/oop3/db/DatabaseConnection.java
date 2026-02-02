@@ -6,7 +6,7 @@ public class DatabaseConnection {
     private static final String URL =
             "jdbc:postgresql://aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require";
     private static final String USER = "postgres.wvkdnfzggynvqbuszecy";
-    private static final String PASSWORD = System.getenv("DB_PASSWORD"); // ← DATABASE PASSWORD
+    private static final String PASSWORD = "6790532opit!"; // ← DATABASE PASSWORD
     private DatabaseConnection() {
         // no instances
     }
@@ -14,4 +14,3 @@ public class DatabaseConnection {
         return DriverManager.getConnection(URL, USER, PASSWORD);
     }
 }
-//q
