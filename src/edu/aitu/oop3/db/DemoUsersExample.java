@@ -91,6 +91,7 @@ public class DemoUsersExample {
             System.out.println("4. Delete student");
             System.out.println("5. View all students");
             System.out.println("6. Register student for course");
+            System.out.println("7. Batch register (Repository + Lambda + Callback)");
             System.out.println("0. Back");
             System.out.print("Choose: ");
             int option = Integer.parseInt(scanner.nextLine());
@@ -153,7 +154,28 @@ public class DemoUsersExample {
                             .forEach(s -> registrationService.register(s, course));
 
 
+                }
+                case 7 -> {
+                    // Demonstration of generic repository + lambda filtering + callback
+                    InMemoryRepository<Student> repo = new InMemoryRepository<>();
+                    repo.save(new Student("Ayan", "Sadykov", "ayan.sadykov@uni.kz", "IT-2513"));
+                    repo.save(new Student("Dana", "Nurpeisova", "dana.nurpeisova@uni.kz", "SE-2302"));
+                    repo.save(new Student("Timur", "Bekov", "timur.bekov@uni.kz", "CS-2415"));
 
+                    System.out.print("Enter course type for batch registration (LECTURE / LAB): ");
+                    String ctype = scanner.nextLine().toUpperCase();
+                    Course course = CourseFactory.createCourse(ctype);
+
+                    EnrollmentService enroll = new EnrollmentService(repo, registrationService);
+
+                    // Use lambda predicate and callback
+                    enroll.registerAll(
+                            s -> s.studentNumber.startsWith("CS"), // lambda predicate
+                            course,
+                            (s, c) -> System.out.println("[Callback] Registered: " + s + " -> " + c.type) // lambda callback
+                    );
+
+                    System.out.println("Batch registration complete.");
                 }
                 case 0 -> back = true;
                 default -> System.out.println("Invalid option.");
