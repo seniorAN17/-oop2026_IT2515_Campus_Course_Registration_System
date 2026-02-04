@@ -15,11 +15,16 @@ public class DemoUsersExample {
 
             createTableStudents(connection);
             createTableInstructors(connection);
+            createTableCourses(connection);
+            createTableEnrollments(connection);
 
 
             insertStudent(connection, "Ayan", "Sadykov", "ayan.sadykov@uni.kz", "IT-2513");
             insertStudent(connection, "Dana", "Nurpeisova", "dana.nurpeisova@uni.kz", "SE-2302");
             insertStudent(connection, "Timur", "Bekov", "timur.bekov@uni.kz", "CS-2415");
+
+            // sample instructors, courses and enrollments (non-fatal if they already exist)
+            insertSampleCoursesAndEnrollments(connection);
 
             Scanner scanner = new Scanner(System.in, "UTF-8");
             boolean exit = false;
@@ -28,6 +33,8 @@ public class DemoUsersExample {
                 System.out.println("\n=== Database Menu ===");
                 System.out.println("1. Students");
                 System.out.println("2. Instructors");
+                System.out.println("3. Courses");
+                System.out.println("4. Enrollments");
                 System.out.println("0. Exit");
                 System.out.print("Choose option: ");
                 int mainOption = Integer.parseInt(scanner.nextLine());
@@ -35,6 +42,8 @@ public class DemoUsersExample {
                 switch (mainOption) {
                     case 1 -> studentMenu(connection, scanner);
                     case 2 -> instructorMenu(connection, scanner);
+                    case 3 -> courseMenu(connection, scanner);
+                    case 4 -> enrollmentMenu(connection, scanner);
                     case 0 -> exit = true;
                     default -> System.out.println("Invalid option. Try again.");
                 }
@@ -362,6 +371,272 @@ public class DemoUsersExample {
             int rows = stmt.executeUpdate();
             System.out.println(rows > 0 ? "Deleted" : "Not found");
         }
+    }
+
+    // ==================== COURSES ====================
+
+    private static void createTableCourses(Connection connection) throws SQLException {
+        String sql = """
+                CREATE TABLE IF NOT EXISTS courses (
+                    id SERIAL PRIMARY KEY,
+                    code VARCHAR(20) UNIQUE NOT NULL,
+                    title VARCHAR(200) NOT NULL,
+                    type VARCHAR(20),
+                    instructor_id INTEGER REFERENCES instructors(id)
+                );
+                """;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.execute();
+            System.out.println("Table courses is ready.");
+        }
+    }
+
+    private static void insertCourse(Connection connection, String code, String title, String type, Integer instructorId) throws SQLException {
+        String sql = """
+                INSERT INTO courses (code, title, type, instructor_id)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (code) DO NOTHING;
+                """;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, code);
+            stmt.setString(2, title);
+            stmt.setString(3, type);
+            if (instructorId == null) stmt.setNull(4, java.sql.Types.INTEGER); else stmt.setInt(4, instructorId);
+            stmt.executeUpdate();
+            System.out.println("Course inserted: " + code + " - " + title);
+        }
+    }
+
+    private static void printAllCourses(Connection connection) throws SQLException {
+        String sql = "SELECT c.id, c.code, c.title, c.type, i.first_name, i.last_name FROM courses c LEFT JOIN instructors i ON c.instructor_id = i.id ORDER BY c.id";
+        try (PreparedStatement stmt = connection.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            System.out.println("Current courses:");
+            while (rs.next()) {
+                String instr = rs.getString("first_name") != null ? rs.getString("first_name") + " " + rs.getString("last_name") : "None";
+                System.out.printf("%d | %s | %s | %s | %s%n", rs.getInt("id"), rs.getString("code"), rs.getString("title"), rs.getString("type"), instr);
+            }
+        }
+    }
+
+    private static void findCourseById(Connection connection, int id) throws SQLException {
+        String sql = "SELECT c.*, i.first_name, i.last_name FROM courses c LEFT JOIN instructors i ON c.instructor_id = i.id WHERE c.id = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                String instr = rs.getString("first_name") != null ? rs.getString("first_name") + " " + rs.getString("last_name") : "None";
+                System.out.printf("Found: %d | %s | %s | %s | %s%n", rs.getInt("id"), rs.getString("code"), rs.getString("title"), rs.getString("type"), instr);
+            } else System.out.println("Not found");
+        }
+    }
+
+    private static void updateCourse(Connection connection, int id, String title, Integer instructorId) throws SQLException {
+        String sql = "UPDATE courses SET title = COALESCE(NULLIF(?, ''), title), instructor_id = ? WHERE id = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, title);
+            if (instructorId == null) stmt.setNull(2, java.sql.Types.INTEGER); else stmt.setInt(2, instructorId);
+            stmt.setInt(3, id);
+            int rows = stmt.executeUpdate();
+            System.out.println(rows > 0 ? "Updated" : "Not found");
+        }
+    }
+
+    private static void deleteCourse(Connection connection, int id) throws SQLException {
+        String sql = "DELETE FROM courses WHERE id = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rows = stmt.executeUpdate();
+            System.out.println(rows > 0 ? "Deleted" : "Not found");
+        }
+    }
+
+    private static void courseMenu(Connection connection, Scanner scanner) throws SQLException {
+        boolean back = false;
+        while (!back) {
+            System.out.println("\n--- Courses Menu ---");
+            System.out.println("1. Insert course");
+            System.out.println("2. Find course by ID");
+            System.out.println("3. Update course title/instructor");
+            System.out.println("4. Delete course");
+            System.out.println("5. View all courses");
+            System.out.println("0. Back");
+            System.out.print("Choose: ");
+            int option = Integer.parseInt(scanner.nextLine());
+            switch (option) {
+                case 1 -> {
+                    System.out.print("Course code: ");
+                    String code = scanner.nextLine();
+                    System.out.print("Title: ");
+                    String title = scanner.nextLine();
+                    System.out.print("Type (LECTURE / LAB): ");
+                    String type = scanner.nextLine().toUpperCase();
+                    System.out.print("Instructor ID (or blank): ");
+                    String iid = scanner.nextLine();
+                    Integer instructorId = iid.isBlank() ? null : Integer.parseInt(iid);
+                    insertCourse(connection, code, title, type, instructorId);
+                }
+                case 2 -> {
+                    System.out.print("Course ID: ");
+                    int id = Integer.parseInt(scanner.nextLine());
+                    findCourseById(connection, id);
+                }
+                case 3 -> {
+                    System.out.print("Course ID: ");
+                    int id = Integer.parseInt(scanner.nextLine());
+                    System.out.print("New title (or blank to keep): ");
+                    String title = scanner.nextLine();
+                    System.out.print("New instructor ID (or blank): ");
+                    String iid = scanner.nextLine();
+                    Integer instructorId = iid.isBlank() ? null : Integer.parseInt(iid);
+                    updateCourse(connection, id, title, instructorId);
+                }
+                case 4 -> {
+                    System.out.print("Course ID to delete: ");
+                    int id = Integer.parseInt(scanner.nextLine());
+                    deleteCourse(connection, id);
+                }
+                case 5 -> printAllCourses(connection);
+                case 0 -> back = true;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    // ==================== ENROLLMENTS ====================
+
+    private static void createTableEnrollments(Connection connection) throws SQLException {
+        String sql = """
+                CREATE TABLE IF NOT EXISTS enrollments (
+                    id SERIAL PRIMARY KEY,
+                    student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+                    course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+                    enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(student_id, course_id)
+                );
+                """;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.execute();
+            System.out.println("Table enrollments is ready.");
+        }
+    }
+
+    private static void insertEnrollment(Connection connection, int studentId, int courseId) throws SQLException {
+        String sql = """
+                INSERT INTO enrollments (student_id, course_id)
+                VALUES (?, ?)
+                ON CONFLICT (student_id, course_id) DO NOTHING;
+                """;
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, studentId);
+            stmt.setInt(2, courseId);
+            int rows = stmt.executeUpdate();
+            System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course " + courseId : "Enrollment already exists or invalid IDs.");
+        }
+    }
+
+    private static void printAllEnrollments(Connection connection) throws SQLException {
+        String sql = "SELECT e.id, s.first_name, s.last_name, s.student_number, c.code, c.title, e.enrolled_at FROM enrollments e JOIN students s ON e.student_id = s.id JOIN courses c ON e.course_id = c.id ORDER BY e.id";
+        try (PreparedStatement stmt = connection.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            System.out.println("Current enrollments:");
+            while (rs.next()) {
+                System.out.printf("%d | %s %s (%s) => %s (%s) at %s%n", rs.getInt("id"), rs.getString("first_name"), rs.getString("last_name"), rs.getString("student_number"), rs.getString("code"), rs.getString("title"), rs.getTimestamp("enrolled_at").toString());
+            }
+        }
+    }
+
+    private static void deleteEnrollment(Connection connection, int id) throws SQLException {
+        String sql = "DELETE FROM enrollments WHERE id = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rows = stmt.executeUpdate();
+            System.out.println(rows > 0 ? "Deleted" : "Not found");
+        }
+    }
+
+    private static void enrollmentMenu(Connection connection, Scanner scanner) throws SQLException {
+        boolean back = false;
+        while (!back) {
+            System.out.println("\n--- Enrollments Menu ---");
+            System.out.println("1. Enroll student to course");
+            System.out.println("2. View all enrollments");
+            System.out.println("3. Delete enrollment");
+            System.out.println("0. Back");
+            System.out.print("Choose: ");
+            int option = Integer.parseInt(scanner.nextLine());
+            switch (option) {
+                case 1 -> {
+                    System.out.print("Student ID: ");
+                    int sid = Integer.parseInt(scanner.nextLine());
+                    System.out.print("Course ID: ");
+                    int cid = Integer.parseInt(scanner.nextLine());
+                    insertEnrollment(connection, sid, cid);
+                }
+                case 2 -> printAllEnrollments(connection);
+                case 3 -> {
+                    System.out.print("Enrollment ID to delete: ");
+                    int id = Integer.parseInt(scanner.nextLine());
+                    deleteEnrollment(connection, id);
+                }
+                case 0 -> back = true;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
+    // Helper lookups for sample data
+    private static Integer findInstructorIdByEmail(Connection connection, String email) throws SQLException {
+        String sql = "SELECT id FROM instructors WHERE email = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) return rs.getInt("id");
+        }
+        return null;
+    }
+
+    private static Integer findStudentIdByEmail(Connection connection, String email) throws SQLException {
+        String sql = "SELECT id FROM students WHERE email = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) return rs.getInt("id");
+        }
+        return null;
+    }
+
+    private static Integer findCourseIdByCode(Connection connection, String code) throws SQLException {
+        String sql = "SELECT id FROM courses WHERE code = ?";
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setString(1, code);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) return rs.getInt("id");
+        }
+        return null;
+    }
+
+    // Insert some sample instructors, courses and enrollment if possible
+    // (keeps id lookups so we don't assume numeric IDs)
+    private static void insertSampleCoursesAndEnrollments(Connection connection) throws SQLException {
+        insertInstructor(connection, "Alice", "Smith", "alice.smith@uni.kz");
+        insertInstructor(connection, "Bob", "Brown", "bob.brown@uni.kz");
+
+        Integer aliceId = findInstructorIdByEmail(connection, "alice.smith@uni.kz");
+        Integer bobId = findInstructorIdByEmail(connection, "bob.brown@uni.kz");
+
+        insertCourse(connection, "CS101", "Intro to Computer Science", "LECTURE", aliceId);
+        insertCourse(connection, "CS101-LAB", "Intro to CS Lab", "LAB", aliceId);
+        insertCourse(connection, "IT200", "Software Engineering", "LECTURE", bobId);
+
+        Integer ayanId = findStudentIdByEmail(connection, "ayan.sadykov@uni.kz");
+        Integer cs101Id = findCourseIdByCode(connection, "CS101");
+        Integer it200Id = findCourseIdByCode(connection, "IT200");
+
+        if (ayanId != null && cs101Id != null) insertEnrollment(connection, ayanId, cs101Id);
+        if (ayanId != null && it200Id != null) insertEnrollment(connection, ayanId, it200Id);
+
+        System.out.println("Sample courses and enrollments inserted (where possible).");
     }
 
     // ==================== DOMAIN ====================
