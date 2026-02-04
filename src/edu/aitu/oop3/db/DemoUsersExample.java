@@ -379,10 +379,9 @@ public class DemoUsersExample {
         String sql = """
                 CREATE TABLE IF NOT EXISTS courses (
                     id SERIAL PRIMARY KEY,
-                    code VARCHAR(20) UNIQUE NOT NULL,
+                    course_code VARCHAR(20) UNIQUE NOT NULL,
                     title VARCHAR(200) NOT NULL,
-                    type VARCHAR(20),
-                    instructor_id INTEGER REFERENCES instructors(id)
+                    credits INTEGER DEFAULT 0
                 );
                 """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
@@ -391,51 +390,48 @@ public class DemoUsersExample {
         }
     }
 
-    private static void insertCourse(Connection connection, String code, String title, String type, Integer instructorId) throws SQLException {
+    private static void insertCourse(Connection connection, String courseCode, String title, int credits) throws SQLException {
         String sql = """
-                INSERT INTO courses (code, title, type, instructor_id)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT (code) DO NOTHING;
+                INSERT INTO courses (course_code, title, credits)
+                VALUES (?, ?, ?)
+                ON CONFLICT (course_code) DO NOTHING;
                 """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, code);
+            stmt.setString(1, courseCode);
             stmt.setString(2, title);
-            stmt.setString(3, type);
-            if (instructorId == null) stmt.setNull(4, java.sql.Types.INTEGER); else stmt.setInt(4, instructorId);
+            stmt.setInt(3, credits);
             stmt.executeUpdate();
-            System.out.println("Course inserted: " + code + " - " + title);
+            System.out.println("Course inserted: " + courseCode + " - " + title + " (" + credits + "cr)");
         }
     }
 
     private static void printAllCourses(Connection connection) throws SQLException {
-        String sql = "SELECT c.id, c.code, c.title, c.type, i.first_name, i.last_name FROM courses c LEFT JOIN instructors i ON c.instructor_id = i.id ORDER BY c.id";
+        String sql = "SELECT c.id, c.course_code, c.title, c.credits FROM courses c ORDER BY c.id";
         try (PreparedStatement stmt = connection.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             System.out.println("Current courses:");
             while (rs.next()) {
-                String instr = rs.getString("first_name") != null ? rs.getString("first_name") + " " + rs.getString("last_name") : "None";
-                System.out.printf("%d | %s | %s | %s | %s%n", rs.getInt("id"), rs.getString("code"), rs.getString("title"), rs.getString("type"), instr);
+                System.out.printf("%d | %s | %s | %d%n", rs.getInt("id"), rs.getString("course_code"), rs.getString("title"), rs.getInt("credits"));
             }
         }
     }
 
     private static void findCourseById(Connection connection, int id) throws SQLException {
-        String sql = "SELECT c.*, i.first_name, i.last_name FROM courses c LEFT JOIN instructors i ON c.instructor_id = i.id WHERE c.id = ?";
+        String sql = "SELECT * FROM courses WHERE id = ?";
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setInt(1, id);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                String instr = rs.getString("first_name") != null ? rs.getString("first_name") + " " + rs.getString("last_name") : "None";
-                System.out.printf("Found: %d | %s | %s | %s | %s%n", rs.getInt("id"), rs.getString("code"), rs.getString("title"), rs.getString("type"), instr);
+                System.out.printf("Found: %d | %s | %s | %d%n", rs.getInt("id"), rs.getString("course_code"), rs.getString("title"), rs.getInt("credits"));
             } else System.out.println("Not found");
         }
     }
 
-    private static void updateCourse(Connection connection, int id, String title, Integer instructorId) throws SQLException {
-        String sql = "UPDATE courses SET title = COALESCE(NULLIF(?, ''), title), instructor_id = ? WHERE id = ?";
+    private static void updateCourse(Connection connection, int id, String title, Integer credits) throws SQLException {
+        String sql = "UPDATE courses SET title = COALESCE(NULLIF(?, ''), title), credits = COALESCE(?, credits) WHERE id = ?";
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setString(1, title);
-            if (instructorId == null) stmt.setNull(2, java.sql.Types.INTEGER); else stmt.setInt(2, instructorId);
+            if (credits == null) stmt.setNull(2, java.sql.Types.INTEGER); else stmt.setInt(2, credits);
             stmt.setInt(3, id);
             int rows = stmt.executeUpdate();
             System.out.println(rows > 0 ? "Updated" : "Not found");
@@ -457,7 +453,7 @@ public class DemoUsersExample {
             System.out.println("\n--- Courses Menu ---");
             System.out.println("1. Insert course");
             System.out.println("2. Find course by ID");
-            System.out.println("3. Update course title/instructor");
+            System.out.println("3. Update course title/credits");
             System.out.println("4. Delete course");
             System.out.println("5. View all courses");
             System.out.println("0. Back");
@@ -469,12 +465,9 @@ public class DemoUsersExample {
                     String code = scanner.nextLine();
                     System.out.print("Title: ");
                     String title = scanner.nextLine();
-                    System.out.print("Type (LECTURE / LAB): ");
-                    String type = scanner.nextLine().toUpperCase();
-                    System.out.print("Instructor ID (or blank): ");
-                    String iid = scanner.nextLine();
-                    Integer instructorId = iid.isBlank() ? null : Integer.parseInt(iid);
-                    insertCourse(connection, code, title, type, instructorId);
+                    System.out.print("Credits (integer): ");
+                    int credits = Integer.parseInt(scanner.nextLine());
+                    insertCourse(connection, code, title, credits);
                 }
                 case 2 -> {
                     System.out.print("Course ID: ");
@@ -486,10 +479,10 @@ public class DemoUsersExample {
                     int id = Integer.parseInt(scanner.nextLine());
                     System.out.print("New title (or blank to keep): ");
                     String title = scanner.nextLine();
-                    System.out.print("New instructor ID (or blank): ");
-                    String iid = scanner.nextLine();
-                    Integer instructorId = iid.isBlank() ? null : Integer.parseInt(iid);
-                    updateCourse(connection, id, title, instructorId);
+                    System.out.print("New credits (or blank to keep): ");
+                    String creds = scanner.nextLine();
+                    Integer credits = creds.isBlank() ? null : Integer.parseInt(creds);
+                    updateCourse(connection, id, title, credits);
                 }
                 case 4 -> {
                     System.out.print("Course ID to delete: ");
@@ -510,9 +503,9 @@ public class DemoUsersExample {
                 CREATE TABLE IF NOT EXISTS enrollments (
                     id SERIAL PRIMARY KEY,
                     student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
-                    course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+                    course VARCHAR(50) REFERENCES courses(course_code) ON DELETE CASCADE,
                     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(student_id, course_id)
+                    UNIQUE(student_id, course)
                 );
                 """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
@@ -521,27 +514,27 @@ public class DemoUsersExample {
         }
     }
 
-    private static void insertEnrollment(Connection connection, int studentId, int courseId) throws SQLException {
+    private static void insertEnrollment(Connection connection, int studentId, String courseCode) throws SQLException {
         String sql = """
-                INSERT INTO enrollments (student_id, course_id)
+                INSERT INTO enrollments (student_id, course)
                 VALUES (?, ?)
-                ON CONFLICT (student_id, course_id) DO NOTHING;
+                ON CONFLICT (student_id, course) DO NOTHING;
                 """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.setInt(1, studentId);
-            stmt.setInt(2, courseId);
+            stmt.setString(2, courseCode);
             int rows = stmt.executeUpdate();
-            System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course " + courseId : "Enrollment already exists or invalid IDs.");
+            System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course " + courseCode : "Enrollment already exists or invalid IDs.");
         }
     }
 
     private static void printAllEnrollments(Connection connection) throws SQLException {
-        String sql = "SELECT e.id, s.first_name, s.last_name, s.student_number, c.code, c.title, e.enrolled_at FROM enrollments e JOIN students s ON e.student_id = s.id JOIN courses c ON e.course_id = c.id ORDER BY e.id";
+        String sql = "SELECT e.id, s.first_name, s.last_name, s.student_number, e.course, c.title, e.enrolled_at FROM enrollments e JOIN students s ON e.student_id = s.id JOIN courses c ON e.course = c.course_code ORDER BY e.id";
         try (PreparedStatement stmt = connection.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             System.out.println("Current enrollments:");
             while (rs.next()) {
-                System.out.printf("%d | %s %s (%s) => %s (%s) at %s%n", rs.getInt("id"), rs.getString("first_name"), rs.getString("last_name"), rs.getString("student_number"), rs.getString("code"), rs.getString("title"), rs.getTimestamp("enrolled_at").toString());
+                System.out.printf("%d | %s %s (%s) => %s (%s) at %s%n", rs.getInt("id"), rs.getString("first_name"), rs.getString("last_name"), rs.getString("student_number"), rs.getString("course"), rs.getString("title"), rs.getTimestamp("enrolled_at").toString());
             }
         }
     }
@@ -569,9 +562,9 @@ public class DemoUsersExample {
                 case 1 -> {
                     System.out.print("Student ID: ");
                     int sid = Integer.parseInt(scanner.nextLine());
-                    System.out.print("Course ID: ");
-                    int cid = Integer.parseInt(scanner.nextLine());
-                    insertEnrollment(connection, sid, cid);
+                    System.out.print("Course code: ");
+                    String code = scanner.nextLine();
+                    insertEnrollment(connection, sid, code);
                 }
                 case 2 -> printAllEnrollments(connection);
                 case 3 -> {
@@ -606,10 +599,10 @@ public class DemoUsersExample {
         return null;
     }
 
-    private static Integer findCourseIdByCode(Connection connection, String code) throws SQLException {
-        String sql = "SELECT id FROM courses WHERE code = ?";
+    private static Integer findCourseIdByCode(Connection connection, String courseCode) throws SQLException {
+        String sql = "SELECT id FROM courses WHERE course_code = ?";
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setString(1, code);
+            stmt.setString(1, courseCode);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) return rs.getInt("id");
         }
@@ -625,16 +618,16 @@ public class DemoUsersExample {
         Integer aliceId = findInstructorIdByEmail(connection, "alice.smith@uni.kz");
         Integer bobId = findInstructorIdByEmail(connection, "bob.brown@uni.kz");
 
-        insertCourse(connection, "CS101", "Intro to Computer Science", "LECTURE", aliceId);
-        insertCourse(connection, "CS101-LAB", "Intro to CS Lab", "LAB", aliceId);
-        insertCourse(connection, "IT200", "Software Engineering", "LECTURE", bobId);
+        insertCourse(connection, "CS101", "Intro to Computer Science", 4);
+        insertCourse(connection, "CS101-LAB", "Intro to CS Lab", 1);
+        insertCourse(connection, "IT200", "Software Engineering", 3);
 
         Integer ayanId = findStudentIdByEmail(connection, "ayan.sadykov@uni.kz");
-        Integer cs101Id = findCourseIdByCode(connection, "CS101");
-        Integer it200Id = findCourseIdByCode(connection, "IT200");
 
-        if (ayanId != null && cs101Id != null) insertEnrollment(connection, ayanId, cs101Id);
-        if (ayanId != null && it200Id != null) insertEnrollment(connection, ayanId, it200Id);
+        if (ayanId != null) {
+            insertEnrollment(connection, ayanId, "CS101");
+            insertEnrollment(connection, ayanId, "IT200");
+        }
 
         System.out.println("Sample courses and enrollments inserted (where possible).");
     }
