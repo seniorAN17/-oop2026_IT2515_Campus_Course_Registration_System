@@ -503,38 +503,77 @@ public class DemoUsersExample {
                 CREATE TABLE IF NOT EXISTS enrollments (
                     id SERIAL PRIMARY KEY,
                     student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
-                    course VARCHAR(50) REFERENCES courses(course_code) ON DELETE CASCADE,
+                    course VARCHAR(50),
                     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(student_id, course)
                 );
                 """;
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             stmt.execute();
-            System.out.println("Table enrollments is ready.");
+            System.out.println("Table enrollments is ready (ensured 'course' column exists).");
+        }
+
+        // Ensure FK to courses(course_code) exists if courses table present
+        try {
+            if (!hasColumn(connection, "enrollments", "course")) {
+                try (PreparedStatement stmt = connection.prepareStatement("ALTER TABLE enrollments ADD COLUMN course VARCHAR(50);")) {
+                    stmt.execute();
+                }
+            }
+            // try adding FK constraint (ignore if fails)
+            try (PreparedStatement stmt = connection.prepareStatement("ALTER TABLE enrollments ADD CONSTRAINT enrollments_course_fkey FOREIGN KEY (course) REFERENCES courses(course_code) ON DELETE CASCADE;")) {
+                stmt.execute();
+            } catch (SQLException ignored) {
+                // constraint might already exist or courses not present yet
+            }
+        } catch (SQLException e) {
+            // best-effort, don't fail startup
+            System.out.println("Warning: could not ensure enrollments course column/constraint: " + e.getMessage());
         }
     }
 
     private static void insertEnrollment(Connection connection, int studentId, String courseCode) throws SQLException {
-        String sql = """
-                INSERT INTO enrollments (student_id, course)
-                VALUES (?, ?)
-                ON CONFLICT (student_id, course) DO NOTHING;
-                """;
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setInt(1, studentId);
-            stmt.setString(2, courseCode);
-            int rows = stmt.executeUpdate();
-            System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course " + courseCode : "Enrollment already exists or invalid IDs.");
+        String courseColumn = getEnrollmentCourseColumn(connection);
+        if ("course_id".equals(courseColumn)) {
+            // resolve course id by code
+            Integer cid = findCourseIdByCode(connection, courseCode);
+            if (cid == null) {
+                System.out.println("Course not found: " + courseCode);
+                return;
+            }
+            String sql = "INSERT INTO enrollments (student_id, course_id) VALUES (?, ?) ON CONFLICT (student_id, course_id) DO NOTHING";
+            try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+                stmt.setInt(1, studentId);
+                stmt.setInt(2, cid);
+                int rows = stmt.executeUpdate();
+                System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course id " + cid : "Enrollment already exists or invalid IDs.");
+            }
+        } else {
+            String col = courseColumn; // either 'course' or 'course_code'
+            String sql = "INSERT INTO enrollments (student_id, " + col + ") VALUES (?, ?) ON CONFLICT (student_id, " + col + ") DO NOTHING";
+            try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+                stmt.setInt(1, studentId);
+                stmt.setString(2, courseCode);
+                int rows = stmt.executeUpdate();
+                System.out.println(rows > 0 ? "Enrollment inserted: student " + studentId + " -> course " + courseCode : "Enrollment already exists or invalid IDs.");
+            }
         }
     }
 
     private static void printAllEnrollments(Connection connection) throws SQLException {
-        String sql = "SELECT e.id, s.first_name, s.last_name, s.student_number, e.course, c.title, e.enrolled_at FROM enrollments e JOIN students s ON e.student_id = s.id JOIN courses c ON e.course = c.course_code ORDER BY e.id";
+        String courseColumn = getEnrollmentCourseColumn(connection);
+        String joinExpr;
+        if ("course_id".equals(courseColumn)) {
+            joinExpr = "JOIN courses c ON e.course_id = c.id";
+        } else {
+            joinExpr = "JOIN courses c ON e." + courseColumn + " = c.course_code";
+        }
+        String sql = "SELECT e.id, s.first_name, s.last_name, s.student_number, e." + courseColumn + " as course_col, c.title, e.enrolled_at FROM enrollments e JOIN students s ON e.student_id = s.id " + joinExpr + " ORDER BY e.id";
         try (PreparedStatement stmt = connection.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             System.out.println("Current enrollments:");
             while (rs.next()) {
-                System.out.printf("%d | %s %s (%s) => %s (%s) at %s%n", rs.getInt("id"), rs.getString("first_name"), rs.getString("last_name"), rs.getString("student_number"), rs.getString("course"), rs.getString("title"), rs.getTimestamp("enrolled_at").toString());
+                System.out.printf("%d | %s %s (%s) => %s (%s) at %s%n", rs.getInt("id"), rs.getString("first_name"), rs.getString("last_name"), rs.getString("student_number"), rs.getString("course_col"), rs.getString("title"), rs.getTimestamp("enrolled_at").toString());
             }
         }
     }
@@ -607,6 +646,25 @@ public class DemoUsersExample {
             if (rs.next()) return rs.getInt("id");
         }
         return null;
+    }
+
+    private static boolean hasColumn(Connection connection, String tableName, String columnName) throws SQLException {
+        // DatabaseMetaData is case-insensitive for unquoted identifiers in Postgres
+        ResultSet rs = connection.getMetaData().getColumns(null, null, tableName, columnName);
+        boolean exists = rs.next();
+        rs.close();
+        return exists;
+    }
+
+    private static String getEnrollmentCourseColumn(Connection connection) throws SQLException {
+        if (hasColumn(connection, "enrollments", "course")) return "course";
+        if (hasColumn(connection, "enrollments", "course_code")) return "course_code";
+        if (hasColumn(connection, "enrollments", "course_id")) return "course_id";
+        // If none found, ensure 'course' column exists and use it
+        try (PreparedStatement stmt = connection.prepareStatement("ALTER TABLE enrollments ADD COLUMN IF NOT EXISTS course VARCHAR(50);")) {
+            stmt.execute();
+        } catch (SQLException ignored) {}
+        return "course";
     }
 
     // Insert some sample instructors, courses and enrollment if possible
